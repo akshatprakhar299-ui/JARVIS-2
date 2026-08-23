@@ -1,9 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from services.llm import (
     generate_response,
+    generate_stream,
     MODEL_NAME
 )
 
@@ -30,7 +32,7 @@ from services.memory import (
 app = FastAPI(
     title="JARVIS AI",
     description="Personal AI assistant powered by GPT-OSS",
-    version="2.0.0"
+    version="2.1.0"
 )
 
 
@@ -81,7 +83,7 @@ async def root():
         "status": "online",
         "assistant": "JARVIS",
         "model": MODEL_NAME,
-        "version": "2.0.0"
+        "version": "2.1.0"
     }
 
 
@@ -95,12 +97,13 @@ async def health():
     return {
         "status": "healthy",
         "llm": MODEL_NAME,
-        "memory": "enabled"
+        "memory": "enabled",
+        "streaming": "enabled"
     }
 
 
 # ============================================================
-# CHAT
+# NORMAL CHAT
 # ============================================================
 
 @app.post("/chat")
@@ -224,6 +227,145 @@ async def chat(request: ChatRequest):
         "model": MODEL_NAME
 
     }
+
+
+# ============================================================
+# STREAMING CHAT
+# ============================================================
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+
+    # --------------------------------------------------------
+    # Get user message
+    # --------------------------------------------------------
+
+    user_message = request.message.strip()
+
+
+    # --------------------------------------------------------
+    # Validate message
+    # --------------------------------------------------------
+
+    if not user_message:
+
+        return {
+            "success": False,
+            "error": "Message cannot be empty"
+        }
+
+
+    # --------------------------------------------------------
+    # Save user message
+    # --------------------------------------------------------
+
+    save_message(
+        "user",
+        user_message
+    )
+
+
+    # --------------------------------------------------------
+    # Process long-term memory
+    # --------------------------------------------------------
+
+    try:
+
+        process_memory(
+            user_message
+        )
+
+    except Exception as error:
+
+        print(
+            f"Memory processing error: {error}"
+        )
+
+
+    # --------------------------------------------------------
+    # Get recent conversation
+    # --------------------------------------------------------
+
+    messages = get_messages(
+        limit=20
+    )
+
+
+    # --------------------------------------------------------
+    # Get long-term memories
+    # --------------------------------------------------------
+
+    try:
+
+        memory_context = get_memory_context()
+
+    except Exception as error:
+
+        print(
+            f"Memory retrieval error: {error}"
+        )
+
+        memory_context = ""
+
+
+    # --------------------------------------------------------
+    # Streaming generator
+    # --------------------------------------------------------
+
+    def response_generator():
+
+        full_response = ""
+
+
+        try:
+
+            for chunk in generate_stream(
+                messages,
+                memory_context
+            ):
+
+                full_response += chunk
+
+                yield chunk
+
+
+            # ------------------------------------------------
+            # Save complete response after streaming
+            # ------------------------------------------------
+
+            if full_response:
+
+                save_message(
+                    "assistant",
+                    full_response
+                )
+
+
+        except Exception as error:
+
+            print(
+                f"Streaming LLM error: {error}"
+            )
+
+            yield "\n\n[JARVIS encountered an error.]"
+
+
+    # --------------------------------------------------------
+    # Return streaming response
+    # --------------------------------------------------------
+
+    return StreamingResponse(
+
+        response_generator(),
+
+        media_type="text/plain",
+
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+
+    )
 
 
 # ============================================================

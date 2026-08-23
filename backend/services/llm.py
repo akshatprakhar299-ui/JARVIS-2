@@ -74,18 +74,13 @@ specifically asks about it.
 
 
 # ============================================================
-# GENERATE RESPONSE
+# BUILD SYSTEM PROMPT
 # ============================================================
 
-def generate_response(
-    messages,
-    memory_context=""
-):
+def build_system_prompt(memory_context=""):
 
     system_prompt = SYSTEM_PROMPT
 
-
-    # Add persistent memory
     if memory_context:
 
         system_prompt += """
@@ -93,6 +88,22 @@ def generate_response(
 The following information is remembered about the user:
 
 """ + memory_context
+
+    return system_prompt
+
+
+# ============================================================
+# GENERATE NORMAL RESPONSE
+# ============================================================
+
+def generate_response(
+    messages,
+    memory_context=""
+):
+
+    system_prompt = build_system_prompt(
+        memory_context
+    )
 
 
     response = client.chat.completions.create(
@@ -114,3 +125,52 @@ The following information is remembered about the user:
 
 
     return response.choices[0].message.content
+
+
+# ============================================================
+# GENERATE STREAMING RESPONSE
+# ============================================================
+
+def generate_stream(
+    messages,
+    memory_context=""
+):
+
+    system_prompt = build_system_prompt(
+        memory_context
+    )
+
+
+    stream = client.chat.completions.create(
+
+        model=MODEL_NAME,
+
+        messages=[
+            {
+                "role": "system",
+
+                "content": system_prompt
+            },
+
+            *messages
+        ],
+
+        temperature=0.7,
+
+        stream=True
+    )
+
+
+    for chunk in stream:
+
+        if not chunk.choices:
+
+            continue
+
+
+        delta = chunk.choices[0].delta
+
+
+        if delta.content:
+
+            yield delta.content

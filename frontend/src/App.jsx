@@ -47,7 +47,7 @@ function App() {
   }
 
   // ============================================================
-  // SEND MESSAGE
+  // SEND MESSAGE - STREAMING
   // ============================================================
 
   async function sendMessage() {
@@ -57,7 +57,10 @@ function App() {
       return;
     }
 
-    // Immediately show user's message
+    // ----------------------------------------------------------
+    // Show user's message immediately
+    // ----------------------------------------------------------
+
     setMessages((previous) => [
       ...previous,
       {
@@ -69,8 +72,24 @@ function App() {
     setInput("");
     setLoading(true);
 
+    // ----------------------------------------------------------
+    // Create empty JARVIS message
+    // ----------------------------------------------------------
+
+    setMessages((previous) => [
+      ...previous,
+      {
+        role: "assistant",
+        content: "",
+      },
+    ]);
+
     try {
-      const response = await fetch(`${API_URL}/chat`, {
+      // --------------------------------------------------------
+      // Connect to streaming endpoint
+      // --------------------------------------------------------
+
+      const response = await fetch(`${API_URL}/chat/stream`, {
         method: "POST",
 
         headers: {
@@ -82,32 +101,132 @@ function App() {
         }),
       });
 
-      const data = await response.json();
+      // --------------------------------------------------------
+      // Check response
+      // --------------------------------------------------------
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Something went wrong");
+      if (!response.ok) {
+        throw new Error(
+          `Server returned ${response.status}`
+        );
       }
 
-      // Add JARVIS response
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content: data.message,
-        },
-      ]);
-    } catch (error) {
-      console.error("Chat error:", error);
+      // --------------------------------------------------------
+      // Make sure streaming is supported
+      // --------------------------------------------------------
 
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content:
-            "I'm having trouble connecting to my backend. Please make sure JARVIS is running.",
-          error: true,
-        },
-      ]);
+      if (!response.body) {
+        throw new Error(
+          "Streaming response is not supported by the browser."
+        );
+      }
+
+      // --------------------------------------------------------
+      // Create stream reader
+      // --------------------------------------------------------
+
+      const reader = response.body.getReader();
+
+      const decoder = new TextDecoder();
+
+      let assistantMessage = "";
+
+      // --------------------------------------------------------
+      // Read stream
+      // --------------------------------------------------------
+
+      while (true) {
+        const { value, done } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        // Convert bytes into text
+        const chunk = decoder.decode(value, {
+          stream: true,
+        });
+
+        assistantMessage += chunk;
+
+        // ------------------------------------------------------
+        // Update JARVIS message immediately
+        // ------------------------------------------------------
+
+        setMessages((previous) => {
+          const updated = [...previous];
+
+          const lastIndex = updated.length - 1;
+
+          if (
+            lastIndex >= 0 &&
+            updated[lastIndex].role === "assistant"
+          ) {
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              content: assistantMessage,
+            };
+          }
+
+          return updated;
+        });
+      }
+
+      // --------------------------------------------------------
+      // Flush decoder
+      // --------------------------------------------------------
+
+      const remainingText = decoder.decode();
+
+      if (remainingText) {
+        assistantMessage += remainingText;
+
+        setMessages((previous) => {
+          const updated = [...previous];
+
+          const lastIndex = updated.length - 1;
+
+          if (
+            lastIndex >= 0 &&
+            updated[lastIndex].role === "assistant"
+          ) {
+            updated[lastIndex] = {
+              ...updated[lastIndex],
+              content: assistantMessage,
+            };
+          }
+
+          return updated;
+        });
+      }
+    } catch (error) {
+      console.error("Streaming chat error:", error);
+
+      // --------------------------------------------------------
+      // Replace empty/failed response with error message
+      // --------------------------------------------------------
+
+      setMessages((previous) => {
+        const updated = [...previous];
+
+        const lastIndex = updated.length - 1;
+
+        if (
+          lastIndex >= 0 &&
+          updated[lastIndex].role === "assistant"
+        ) {
+          updated[lastIndex] = {
+            ...updated[lastIndex],
+
+            content:
+              "I'm having trouble connecting to my backend. Please make sure JARVIS is running.",
+
+            error: true,
+          };
+        }
+
+        return updated;
+      });
     } finally {
       setLoading(false);
     }
@@ -120,6 +239,7 @@ function App() {
   function handleKeyDown(event) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
+
       sendMessage();
     }
   }
@@ -180,6 +300,7 @@ function App() {
           <button
             className="clear-button"
             onClick={clearChat}
+            disabled={loading}
           >
             Clear
           </button>
@@ -213,7 +334,9 @@ function App() {
 
               <button
                 onClick={() =>
-                  setInput("Explain artificial intelligence to me")
+                  setInput(
+                    "Explain artificial intelligence to me"
+                  )
                 }
               >
                 Explain AI
@@ -229,7 +352,9 @@ function App() {
 
               <button
                 onClick={() =>
-                  setInput("Teach me something interesting")
+                  setInput(
+                    "Teach me something interesting"
+                  )
                 }
               >
                 Teach me something
@@ -261,37 +386,55 @@ function App() {
                     message.error ? "error" : ""
                   }`}
                 >
+
                   {message.content}
+
+                  {/* ------------------------------------------
+                      Streaming cursor
+                      ------------------------------------------ */}
+
+                  {loading &&
+                    message.role === "assistant" &&
+                    index === messages.length - 1 && (
+                      <span className="streaming-cursor">
+                        ▌
+                      </span>
+                    )}
+
                 </div>
 
               </div>
 
             ))}
 
-
             {/* =================================================
                 TYPING INDICATOR
+                Only appears before first streaming chunk
                 ================================================= */}
 
-            {loading && (
+            {loading &&
+              messages.length > 0 &&
+              messages[messages.length - 1].role ===
+                "assistant" &&
+              messages[messages.length - 1].content === "" && (
 
-              <div className="message-row assistant">
+                <div className="message-row assistant">
 
-                <div className="message-avatar">
-                  J
+                  <div className="message-avatar">
+                    J
+                  </div>
+
+                  <div className="message-bubble typing">
+
+                    <span></span>
+                    <span></span>
+                    <span></span>
+
+                  </div>
+
                 </div>
 
-                <div className="message-bubble typing">
-
-                  <span></span>
-                  <span></span>
-                  <span></span>
-
-                </div>
-
-              </div>
-
-            )}
+              )}
 
             <div ref={messagesEndRef}></div>
 
