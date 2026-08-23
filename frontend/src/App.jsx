@@ -58,7 +58,7 @@ function App() {
     }
 
     // ----------------------------------------------------------
-    // Show user's message immediately
+    // Add user message immediately
     // ----------------------------------------------------------
 
     setMessages((previous) => [
@@ -73,7 +73,7 @@ function App() {
     setLoading(true);
 
     // ----------------------------------------------------------
-    // Create empty JARVIS message
+    // Add empty JARVIS message
     // ----------------------------------------------------------
 
     setMessages((previous) => [
@@ -89,20 +89,23 @@ function App() {
       // Connect to streaming endpoint
       // --------------------------------------------------------
 
-      const response = await fetch(`${API_URL}/chat/stream`, {
-        method: "POST",
+      const response = await fetch(
+        `${API_URL}/chat/stream`,
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type": "application/json",
-        },
+          headers: {
+            "Content-Type": "application/json",
+          },
 
-        body: JSON.stringify({
-          message: message,
-        }),
-      });
+          body: JSON.stringify({
+            message: message,
+          }),
+        }
+      );
 
       // --------------------------------------------------------
-      // Check response
+      // Check server response
       // --------------------------------------------------------
 
       if (!response.ok) {
@@ -112,12 +115,12 @@ function App() {
       }
 
       // --------------------------------------------------------
-      // Make sure streaming is supported
+      // Check streaming support
       // --------------------------------------------------------
 
       if (!response.body) {
         throw new Error(
-          "Streaming response is not supported by the browser."
+          "Streaming is not supported by this browser."
         );
       }
 
@@ -132,7 +135,7 @@ function App() {
       let assistantMessage = "";
 
       // --------------------------------------------------------
-      // Read stream
+      // Read stream continuously
       // --------------------------------------------------------
 
       while (true) {
@@ -142,7 +145,10 @@ function App() {
           break;
         }
 
-        // Convert bytes into text
+        // ------------------------------------------------------
+        // Convert bytes to text
+        // ------------------------------------------------------
+
         const chunk = decoder.decode(value, {
           stream: true,
         });
@@ -150,7 +156,7 @@ function App() {
         assistantMessage += chunk;
 
         // ------------------------------------------------------
-        // Update JARVIS message immediately
+        // Update JARVIS message
         // ------------------------------------------------------
 
         setMessages((previous) => {
@@ -203,7 +209,7 @@ function App() {
       console.error("Streaming chat error:", error);
 
       // --------------------------------------------------------
-      // Replace empty/failed response with error message
+      // Display error inside JARVIS message
       // --------------------------------------------------------
 
       setMessages((previous) => {
@@ -250,9 +256,12 @@ function App() {
 
   async function clearChat() {
     try {
-      const response = await fetch(`${API_URL}/history`, {
-        method: "DELETE",
-      });
+      const response = await fetch(
+        `${API_URL}/history`,
+        {
+          method: "DELETE",
+        }
+      );
 
       const data = await response.json();
 
@@ -260,7 +269,10 @@ function App() {
         setMessages([]);
       }
     } catch (error) {
-      console.error("Could not clear history:", error);
+      console.error(
+        "Could not clear history:",
+        error
+      );
     }
   }
 
@@ -389,13 +401,12 @@ function App() {
 
                   {message.content}
 
-                  {/* ------------------------------------------
-                      Streaming cursor
-                      ------------------------------------------ */}
+                  {/* Streaming cursor */}
 
                   {loading &&
                     message.role === "assistant" &&
-                    index === messages.length - 1 && (
+                    index === messages.length - 1 &&
+                    message.content && (
                       <span className="streaming-cursor">
                         ▌
                       </span>
@@ -408,8 +419,7 @@ function App() {
             ))}
 
             {/* =================================================
-                TYPING INDICATOR
-                Only appears before first streaming chunk
+                INITIAL TYPING INDICATOR
                 ================================================= */}
 
             {loading &&

@@ -165,7 +165,7 @@ async def chat(request: ChatRequest):
 
 
     # --------------------------------------------------------
-    # Get long-term memories
+    # Get long-term memory
     # --------------------------------------------------------
 
     try:
@@ -292,7 +292,7 @@ async def chat_stream(request: ChatRequest):
 
 
     # --------------------------------------------------------
-    # Get long-term memories
+    # Get long-term memory
     # --------------------------------------------------------
 
     try:
@@ -309,13 +309,12 @@ async def chat_stream(request: ChatRequest):
 
 
     # --------------------------------------------------------
-    # Streaming generator
+    # Generate streaming response
     # --------------------------------------------------------
 
     def response_generator():
 
         full_response = ""
-
 
         try:
 
@@ -324,8 +323,10 @@ async def chat_stream(request: ChatRequest):
                 memory_context
             ):
 
+                # Add chunk to complete response
                 full_response += chunk
 
+                # Immediately send chunk to frontend
                 yield chunk
 
 
@@ -344,10 +345,13 @@ async def chat_stream(request: ChatRequest):
         except Exception as error:
 
             print(
-                f"Streaming LLM error: {error}"
+                f"Streaming error: {error}"
             )
 
-            yield "\n\n[JARVIS encountered an error.]"
+            yield (
+                "\n\n"
+                "[JARVIS ERROR: Unable to generate response]"
+            )
 
 
     # --------------------------------------------------------
@@ -358,12 +362,7 @@ async def chat_stream(request: ChatRequest):
 
         response_generator(),
 
-        media_type="text/plain",
-
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive"
-        }
+        media_type="text/plain"
 
     )
 

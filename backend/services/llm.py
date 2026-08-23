@@ -1,7 +1,6 @@
 import os
 
 from dotenv import load_dotenv
-
 from groq import Groq
 
 
@@ -12,16 +11,11 @@ from groq import Groq
 load_dotenv()
 
 
-api_key = os.getenv(
-    "GROQ_API_KEY"
-)
+api_key = os.getenv("GROQ_API_KEY")
 
 
 if not api_key:
-
-    raise ValueError(
-        "GROQ_API_KEY is missing from .env"
-    )
+    raise ValueError("GROQ_API_KEY is missing from .env")
 
 
 # ============================================================
@@ -93,6 +87,25 @@ The following information is remembered about the user:
 
 
 # ============================================================
+# BUILD MESSAGES
+# ============================================================
+
+def build_messages(messages, memory_context=""):
+
+    system_prompt = build_system_prompt(
+        memory_context
+    )
+
+    return [
+        {
+            "role": "system",
+            "content": system_prompt
+        },
+        *messages
+    ]
+
+
+# ============================================================
 # GENERATE NORMAL RESPONSE
 # ============================================================
 
@@ -101,28 +114,19 @@ def generate_response(
     memory_context=""
 ):
 
-    system_prompt = build_system_prompt(
-        memory_context
-    )
-
-
     response = client.chat.completions.create(
 
         model=MODEL_NAME,
 
-        messages=[
-            {
-                "role": "system",
+        messages=build_messages(
+            messages,
+            memory_context
+        ),
 
-                "content": system_prompt
-            },
+        temperature=0.7,
 
-            *messages
-        ],
-
-        temperature=0.7
+        stream=False
     )
-
 
     return response.choices[0].message.content
 
@@ -136,24 +140,14 @@ def generate_stream(
     memory_context=""
 ):
 
-    system_prompt = build_system_prompt(
-        memory_context
-    )
-
-
     stream = client.chat.completions.create(
 
         model=MODEL_NAME,
 
-        messages=[
-            {
-                "role": "system",
-
-                "content": system_prompt
-            },
-
-            *messages
-        ],
+        messages=build_messages(
+            messages,
+            memory_context
+        ),
 
         temperature=0.7,
 
@@ -161,10 +155,12 @@ def generate_stream(
     )
 
 
+    # Send each piece of the response
+    # to the caller as soon as Groq generates it.
+
     for chunk in stream:
 
         if not chunk.choices:
-
             continue
 
 
