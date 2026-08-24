@@ -1,13 +1,24 @@
-from fastapi import FastAPI
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Depends
+)
+
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+
+from fastapi.security import (
+    HTTPBearer,
+    HTTPAuthorizationCredentials
+)
+
 from pydantic import BaseModel
+
 
 from services.llm import (
     generate_response,
-    generate_stream,
     MODEL_NAME
 )
+
 
 from services.database import (
     initialize_database,
@@ -19,9 +30,15 @@ from services.database import (
     clear_memories
 )
 
+
 from services.memory import (
     process_memory,
     get_memory_context
+)
+
+
+from services.firebase_auth import (
+    verify_token
 )
 
 
@@ -32,7 +49,7 @@ from services.memory import (
 app = FastAPI(
     title="JARVIS AI",
     description="Personal AI assistant powered by GPT-OSS",
-    version="2.1.0"
+    version="3.0.0"
 )
 
 
@@ -45,6 +62,7 @@ app.add_middleware(
 
     allow_origins=[
         "http://localhost:5173",
+        "http://localhost:5174",
         "http://localhost:8080"
     ],
 
@@ -64,6 +82,37 @@ initialize_database()
 
 
 # ============================================================
+# AUTHENTICATION
+# ============================================================
+
+security = HTTPBearer()
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+
+    try:
+
+        decoded_token = verify_token(
+            credentials.credentials
+        )
+
+        return decoded_token
+
+    except Exception as error:
+
+        print(
+            f"Authentication error: {error}"
+        )
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired authentication token"
+        )
+
+
+# ============================================================
 # REQUEST MODEL
 # ============================================================
 
@@ -80,10 +129,19 @@ class ChatRequest(BaseModel):
 async def root():
 
     return {
+
         "status": "online",
+
         "assistant": "JARVIS",
+
         "model": MODEL_NAME,
-        "version": "2.1.0"
+
+        "version": "3.0.0",
+
+        "authentication": "enabled",
+
+        "user_memory": "enabled"
+
     }
 
 
@@ -95,19 +153,34 @@ async def root():
 async def health():
 
     return {
+
         "status": "healthy",
+
         "llm": MODEL_NAME,
+
         "memory": "enabled",
-        "streaming": "enabled"
+
+        "authentication": "enabled"
+
     }
 
 
 # ============================================================
-# NORMAL CHAT
+# CHAT
 # ============================================================
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    current_user: dict = Depends(get_current_user)
+):
+
+    # --------------------------------------------------------
+    # Get Firebase UID
+    # --------------------------------------------------------
+
+    user_id = current_user["uid"]
+
 
     # --------------------------------------------------------
     # Get user message
@@ -123,8 +196,11 @@ async def chat(request: ChatRequest):
     if not user_message:
 
         return {
+
             "success": False,
+
             "error": "Message cannot be empty"
+
         }
 
 
@@ -133,6 +209,7 @@ async def chat(request: ChatRequest):
     # --------------------------------------------------------
 
     save_message(
+        user_id,
         "user",
         user_message
     )
@@ -145,6 +222,7 @@ async def chat(request: ChatRequest):
     try:
 
         process_memory(
+            user_id,
             user_message
         )
 
@@ -160,17 +238,20 @@ async def chat(request: ChatRequest):
     # --------------------------------------------------------
 
     messages = get_messages(
+        user_id,
         limit=20
     )
 
 
     # --------------------------------------------------------
-    # Get long-term memory
+    # Get user's long-term memories
     # --------------------------------------------------------
 
     try:
 
-        memory_context = get_memory_context()
+        memory_context = get_memory_context(
+            user_id
+        )
 
     except Exception as error:
 
@@ -199,8 +280,12 @@ async def chat(request: ChatRequest):
         )
 
         return {
+
             "success": False,
-            "error": "JARVIS could not generate a response."
+
+            "error":
+                "JARVIS could not generate a response."
+
         }
 
 
@@ -209,6 +294,7 @@ async def chat(request: ChatRequest):
     # --------------------------------------------------------
 
     save_message(
+        user_id,
         "assistant",
         assistant_response
     )
@@ -230,153 +316,22 @@ async def chat(request: ChatRequest):
 
 
 # ============================================================
-# STREAMING CHAT
-# ============================================================
-
-@app.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
-
-    # --------------------------------------------------------
-    # Get user message
-    # --------------------------------------------------------
-
-    user_message = request.message.strip()
-
-
-    # --------------------------------------------------------
-    # Validate message
-    # --------------------------------------------------------
-
-    if not user_message:
-
-        return {
-            "success": False,
-            "error": "Message cannot be empty"
-        }
-
-
-    # --------------------------------------------------------
-    # Save user message
-    # --------------------------------------------------------
-
-    save_message(
-        "user",
-        user_message
-    )
-
-
-    # --------------------------------------------------------
-    # Process long-term memory
-    # --------------------------------------------------------
-
-    try:
-
-        process_memory(
-            user_message
-        )
-
-    except Exception as error:
-
-        print(
-            f"Memory processing error: {error}"
-        )
-
-
-    # --------------------------------------------------------
-    # Get recent conversation
-    # --------------------------------------------------------
-
-    messages = get_messages(
-        limit=20
-    )
-
-
-    # --------------------------------------------------------
-    # Get long-term memory
-    # --------------------------------------------------------
-
-    try:
-
-        memory_context = get_memory_context()
-
-    except Exception as error:
-
-        print(
-            f"Memory retrieval error: {error}"
-        )
-
-        memory_context = ""
-
-
-    # --------------------------------------------------------
-    # Generate streaming response
-    # --------------------------------------------------------
-
-    def response_generator():
-
-        full_response = ""
-
-        try:
-
-            for chunk in generate_stream(
-                messages,
-                memory_context
-            ):
-
-                # Add chunk to complete response
-                full_response += chunk
-
-                # Immediately send chunk to frontend
-                yield chunk
-
-
-            # ------------------------------------------------
-            # Save complete response after streaming
-            # ------------------------------------------------
-
-            if full_response:
-
-                save_message(
-                    "assistant",
-                    full_response
-                )
-
-
-        except Exception as error:
-
-            print(
-                f"Streaming error: {error}"
-            )
-
-            yield (
-                "\n\n"
-                "[JARVIS ERROR: Unable to generate response]"
-            )
-
-
-    # --------------------------------------------------------
-    # Return streaming response
-    # --------------------------------------------------------
-
-    return StreamingResponse(
-
-        response_generator(),
-
-        media_type="text/plain"
-
-    )
-
-
-# ============================================================
 # CONVERSATION HISTORY
 # ============================================================
 
 @app.get("/history")
-async def history():
+async def history(
+    current_user: dict = Depends(get_current_user)
+):
+
+    user_id = current_user["uid"]
+
 
     messages = get_messages(
+        user_id,
         limit=100
     )
+
 
     return {
 
@@ -392,9 +347,17 @@ async def history():
 # ============================================================
 
 @app.delete("/history")
-async def delete_history():
+async def delete_history(
+    current_user: dict = Depends(get_current_user)
+):
 
-    clear_messages()
+    user_id = current_user["uid"]
+
+
+    clear_messages(
+        user_id
+    )
+
 
     return {
 
@@ -410,9 +373,17 @@ async def delete_history():
 # ============================================================
 
 @app.get("/memory")
-async def memory():
+async def memory(
+    current_user: dict = Depends(get_current_user)
+):
 
-    memories = get_memories()
+    user_id = current_user["uid"]
+
+
+    memories = get_memories(
+        user_id
+    )
+
 
     return {
 
@@ -428,17 +399,26 @@ async def memory():
 # ============================================================
 
 @app.delete("/memory/{key}")
-async def delete_specific_memory(key: str):
+async def delete_specific_memory(
+    key: str,
+    current_user: dict = Depends(get_current_user)
+):
+
+    user_id = current_user["uid"]
+
 
     delete_memory(
+        user_id,
         key
     )
+
 
     return {
 
         "success": True,
 
-        "message": f"Memory '{key}' deleted"
+        "message":
+            f"Memory '{key}' deleted"
 
     }
 
@@ -448,9 +428,17 @@ async def delete_specific_memory(key: str):
 # ============================================================
 
 @app.delete("/memory")
-async def delete_all_memory():
+async def delete_all_memory(
+    current_user: dict = Depends(get_current_user)
+):
 
-    clear_memories()
+    user_id = current_user["uid"]
+
+
+    clear_memories(
+        user_id
+    )
+
 
     return {
 

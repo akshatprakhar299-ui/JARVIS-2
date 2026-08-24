@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from "react";
+
 import {
   onAuthStateChanged,
   signOut,
 } from "firebase/auth";
 
 import { auth } from "./firebase";
+
 import Login from "./Login";
 import Signup from "./Signup";
 
 import "./App.css";
 
+
 const API_URL = "http://127.0.0.1:8000";
+
 
 function App() {
 
@@ -19,42 +23,55 @@ function App() {
   // ============================================================
 
   const [user, setUser] = useState(undefined);
+
   const [showSignup, setShowSignup] = useState(false);
+
 
   useEffect(() => {
 
     const unsubscribe = onAuthStateChanged(
       auth,
       (currentUser) => {
+
         setUser(currentUser);
+
       }
     );
+
 
     return () => unsubscribe();
 
   }, []);
+
 
   // ============================================================
   // CHAT STATE
   // ============================================================
 
   const [messages, setMessages] = useState([]);
+
   const [input, setInput] = useState("");
+
   const [loading, setLoading] = useState(false);
+
 
   const messagesEndRef = useRef(null);
 
+
   // ============================================================
-  // LOAD CHAT HISTORY
+  // LOAD CHAT HISTORY WHEN USER LOGS IN
   // ============================================================
 
   useEffect(() => {
 
     if (user) {
+
       loadHistory();
+
     }
 
   }, [user]);
+
 
   // ============================================================
   // AUTO SCROLL
@@ -68,6 +85,31 @@ function App() {
 
   }, [messages, loading]);
 
+
+  // ============================================================
+  // GET FIREBASE ID TOKEN
+  // ============================================================
+
+  async function getAuthToken() {
+
+    if (!auth.currentUser) {
+
+      throw new Error(
+        "User is not authenticated"
+      );
+
+    }
+
+
+    const token =
+      await auth.currentUser.getIdToken();
+
+
+    return token;
+
+  }
+
+
   // ============================================================
   // LOAD HISTORY
   // ============================================================
@@ -76,14 +118,42 @@ function App() {
 
     try {
 
-      const response =
-        await fetch(`${API_URL}/history`);
+      const token =
+        await getAuthToken();
+
+
+      const response = await fetch(
+        `${API_URL}/history`,
+        {
+          method: "GET",
+
+          headers: {
+            "Authorization": `Bearer ${token}`,
+          },
+        }
+      );
+
 
       const data =
         await response.json();
 
+
+      if (!response.ok) {
+
+        throw new Error(
+          data.detail ||
+          "Could not load history"
+        );
+
+      }
+
+
       if (data.success) {
-        setMessages(data.messages);
+
+        setMessages(
+          data.messages
+        );
+
       }
 
     } catch (error) {
@@ -94,7 +164,9 @@ function App() {
       );
 
     }
+
   }
+
 
   // ============================================================
   // SEND MESSAGE
@@ -102,27 +174,60 @@ function App() {
 
   async function sendMessage() {
 
-    const message = input.trim();
+    const message =
+      input.trim();
+
 
     if (!message || loading) {
+
       return;
+
     }
 
-    setMessages((previous) => [
 
-      ...previous,
+    if (!user) {
 
-      {
-        role: "user",
-        content: message,
-      },
+      return;
 
-    ]);
+    }
+
+
+    // ----------------------------------------------------------
+    // Show user message immediately
+    // ----------------------------------------------------------
+
+    setMessages(
+      (previous) => [
+
+        ...previous,
+
+        {
+          role: "user",
+          content: message,
+        },
+
+      ]
+    );
+
 
     setInput("");
+
     setLoading(true);
 
+
     try {
+
+      // --------------------------------------------------------
+      // Get Firebase token
+      // --------------------------------------------------------
+
+      const token =
+        await getAuthToken();
+
+
+      // --------------------------------------------------------
+      // Send authenticated request
+      // --------------------------------------------------------
 
       const response = await fetch(
         `${API_URL}/chat`,
@@ -130,19 +235,50 @@ function App() {
           method: "POST",
 
           headers: {
-            "Content-Type": "application/json",
+
+            "Content-Type":
+              "application/json",
+
+            "Authorization":
+              `Bearer ${token}`,
+
           },
 
           body: JSON.stringify({
+
             message: message,
+
           }),
+
         }
       );
+
 
       const data =
         await response.json();
 
-      if (!response.ok || !data.success) {
+
+      // --------------------------------------------------------
+      // Handle authentication error
+      // --------------------------------------------------------
+
+      if (response.status === 401) {
+
+        throw new Error(
+          "Your login session has expired. Please login again."
+        );
+
+      }
+
+
+      // --------------------------------------------------------
+      // Handle other errors
+      // --------------------------------------------------------
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
 
         throw new Error(
           data.error ||
@@ -151,16 +287,24 @@ function App() {
 
       }
 
-      setMessages((previous) => [
 
-        ...previous,
+      // --------------------------------------------------------
+      // Add JARVIS response
+      // --------------------------------------------------------
 
-        {
-          role: "assistant",
-          content: data.message,
-        },
+      setMessages(
+        (previous) => [
 
-      ]);
+          ...previous,
+
+          {
+            role: "assistant",
+            content: data.message,
+          },
+
+        ]
+      );
+
 
     } catch (error) {
 
@@ -169,27 +313,34 @@ function App() {
         error
       );
 
-      setMessages((previous) => [
 
-        ...previous,
+      setMessages(
+        (previous) => [
 
-        {
-          role: "assistant",
+          ...previous,
 
-          content:
-            "I'm having trouble connecting to my backend. Please make sure JARVIS is running.",
+          {
+            role: "assistant",
 
-          error: true,
-        },
+            content:
+              error.message ||
+              "I'm having trouble connecting to my backend.",
 
-      ]);
+            error: true,
+          },
+
+        ]
+      );
+
 
     } finally {
 
       setLoading(false);
 
     }
+
   }
+
 
   // ============================================================
   // ENTER KEY
@@ -207,7 +358,9 @@ function App() {
       sendMessage();
 
     }
+
   }
+
 
   // ============================================================
   // CLEAR CHAT
@@ -217,22 +370,52 @@ function App() {
 
     try {
 
-      const response =
-        await fetch(
-          `${API_URL}/history`,
-          {
-            method: "DELETE",
-          }
-        );
+      const token =
+        await getAuthToken();
+
+
+      const response = await fetch(
+        `${API_URL}/history`,
+        {
+          method: "DELETE",
+
+          headers: {
+
+            "Authorization":
+              `Bearer ${token}`,
+
+          },
+
+        }
+      );
+
 
       const data =
         await response.json();
 
-      if (data.success) {
 
-        setMessages([]);
+      if (response.status === 401) {
+
+        throw new Error(
+          "Authentication expired. Please login again."
+        );
 
       }
+
+
+      if (!response.ok || !data.success) {
+
+        throw new Error(
+          data.error ||
+          data.detail ||
+          "Could not clear history"
+        );
+
+      }
+
+
+      setMessages([]);
+
 
     } catch (error) {
 
@@ -242,7 +425,9 @@ function App() {
       );
 
     }
+
   }
+
 
   // ============================================================
   // LOGOUT
@@ -256,6 +441,8 @@ function App() {
 
       setMessages([]);
 
+      setInput("");
+
     } catch (error) {
 
       console.error(
@@ -264,7 +451,9 @@ function App() {
       );
 
     }
+
   }
+
 
   // ============================================================
   // AUTH LOADING
@@ -273,6 +462,7 @@ function App() {
   if (user === undefined) {
 
     return (
+
       <div className="auth-loading">
 
         <h1>JARVIS</h1>
@@ -282,9 +472,11 @@ function App() {
         </p>
 
       </div>
+
     );
 
   }
+
 
   // ============================================================
   // LOGIN
@@ -293,20 +485,27 @@ function App() {
   if (!user && !showSignup) {
 
     return (
+
       <Login
 
         onLogin={(loggedInUser) => {
+
           setUser(loggedInUser);
+
         }}
 
         onSignup={() => {
+
           setShowSignup(true);
+
         }}
 
       />
+
     );
 
   }
+
 
   // ============================================================
   // SIGNUP
@@ -315,20 +514,27 @@ function App() {
   if (!user && showSignup) {
 
     return (
+
       <Signup
 
         onSignup={(newUser) => {
+
           setUser(newUser);
+
         }}
 
         onLogin={() => {
+
           setShowSignup(false);
+
         }}
 
       />
+
     );
 
   }
+
 
   // ============================================================
   // JARVIS CHAT
@@ -338,21 +544,28 @@ function App() {
 
     <div className="jarvis-app">
 
+
       {/* ======================================================
           HEADER
       ====================================================== */}
 
       <header className="jarvis-header">
 
+
         <div className="brand">
 
           <div className="brand-orb">
+
             <span></span>
+
           </div>
+
 
           <div>
 
-            <h1>JARVIS</h1>
+            <h1>
+              JARVIS
+            </h1>
 
             <p>
               PERSONAL AI ASSISTANT
@@ -362,7 +575,9 @@ function App() {
 
         </div>
 
+
         <div className="header-right">
+
 
           <div className="status">
 
@@ -372,9 +587,13 @@ function App() {
 
           </div>
 
+
           <span className="user-email">
+
             {user.email}
+
           </span>
+
 
           <button
             className="clear-button"
@@ -383,6 +602,7 @@ function App() {
             Clear
           </button>
 
+
           <button
             className="logout-button"
             onClick={handleLogout}
@@ -390,9 +610,11 @@ function App() {
             Logout
           </button>
 
+
         </div>
 
       </header>
+
 
       {/* ======================================================
           CHAT
@@ -400,9 +622,11 @@ function App() {
 
       <main className="chat-container">
 
+
         {messages.length === 0 ? (
 
           <div className="welcome">
+
 
             <div className="welcome-orb">
 
@@ -410,15 +634,19 @@ function App() {
 
             </div>
 
+
             <h2>
               How can I assist you?
             </h2>
+
 
             <p>
               I'm JARVIS, your personal AI assistant.
             </p>
 
+
             <div className="suggestions">
+
 
               <button
                 onClick={() =>
@@ -430,6 +658,7 @@ function App() {
                 Explain AI
               </button>
 
+
               <button
                 onClick={() =>
                   setInput(
@@ -439,6 +668,7 @@ function App() {
               >
                 Plan my day
               </button>
+
 
               <button
                 onClick={() =>
@@ -450,6 +680,7 @@ function App() {
                 Teach me something
               </button>
 
+
             </div>
 
           </div>
@@ -457,6 +688,7 @@ function App() {
         ) : (
 
           <div className="messages">
+
 
             {messages.map(
               (message, index) => (
@@ -468,6 +700,7 @@ function App() {
                   }
                 >
 
+
                   {message.role ===
                     "assistant" && (
 
@@ -476,6 +709,7 @@ function App() {
                     </div>
 
                   )}
+
 
                   <div
                     className={
@@ -486,23 +720,31 @@ function App() {
                       }`
                     }
                   >
+
                     {message.content}
+
                   </div>
+
 
                 </div>
 
               )
             )}
 
-            {/* TYPING */}
+
+            {/* =================================================
+                TYPING INDICATOR
+                ================================================= */}
 
             {loading && (
 
               <div className="message-row assistant">
 
+
                 <div className="message-avatar">
                   J
                 </div>
+
 
                 <div className="message-bubble typing">
 
@@ -512,13 +754,16 @@ function App() {
 
                 </div>
 
+
               </div>
 
             )}
 
+
             <div
               ref={messagesEndRef}
             />
+
 
           </div>
 
@@ -526,19 +771,25 @@ function App() {
 
       </main>
 
+
       {/* ======================================================
           INPUT
       ====================================================== */}
 
       <footer className="input-area">
 
+
         <div className="input-wrapper">
 
+
           <textarea
+
             value={input}
 
             onChange={(event) =>
-              setInput(event.target.value)
+              setInput(
+                event.target.value
+              )
             }
 
             onKeyDown={handleKeyDown}
@@ -548,9 +799,12 @@ function App() {
             rows="1"
 
             disabled={loading}
+
           />
 
+
           <button
+
             className="send-button"
 
             onClick={sendMessage}
@@ -559,21 +813,30 @@ function App() {
               !input.trim() ||
               loading
             }
+
           >
             ↑
           </button>
 
+
         </div>
 
+
         <p className="input-hint">
+
           Press Enter to send • Shift + Enter for a new line
+
         </p>
 
+
       </footer>
+
 
     </div>
 
   );
+
 }
+
 
 export default App;

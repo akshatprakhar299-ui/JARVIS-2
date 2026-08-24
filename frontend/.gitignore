@@ -17,3 +17,9 @@ frontend/dist/
 # Database
 backend/*.db
 database/*.db
+firebase-admin.json
+
+# Firebase Admin credentials
+backend/services/firebase-admin.json
+firebase-admin.json
+**/firebase-admin.json

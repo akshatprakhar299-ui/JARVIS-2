@@ -113,7 +113,10 @@ def extract_memory(user_message):
 # PROCESS USER MESSAGE
 # ============================================================
 
-def process_memory(user_message):
+def process_memory(
+    user_id,
+    user_message
+):
 
     key, value = extract_memory(
         user_message
@@ -122,6 +125,7 @@ def process_memory(user_message):
     if key and value:
 
         save_memory(
+            user_id,
             key,
             value
         )
@@ -135,10 +139,11 @@ def process_memory(user_message):
 # BUILD MEMORY CONTEXT
 # ============================================================
 
-def get_memory_context():
+def get_memory_context(user_id):
 
-    memories = get_memories()
-
+    memories = get_memories(
+        user_id
+    )
 
     if not memories:
 

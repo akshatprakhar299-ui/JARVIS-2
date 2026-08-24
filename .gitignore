@@ -66,3 +66,6 @@ Thumbs.db
 # =========================
 
 .vscode/
+# Firebase Admin credentials
+firebase-admin.json
+**/firebase-admin.json

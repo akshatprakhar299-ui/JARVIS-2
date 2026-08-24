@@ -41,11 +41,15 @@ def initialize_database():
 
     cursor = connection.cursor()
 
+    # --------------------------------------------------------
+    # Messages
+    # --------------------------------------------------------
 
-    # Conversation messages
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+            user_id TEXT NOT NULL,
 
             role TEXT NOT NULL,
 
@@ -55,22 +59,27 @@ def initialize_database():
         )
     """)
 
+    # --------------------------------------------------------
+    # Memories
+    # --------------------------------------------------------
 
-    # Long-term memories
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS memories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-            key TEXT NOT NULL UNIQUE,
+            user_id TEXT NOT NULL,
+
+            key TEXT NOT NULL,
 
             value TEXT NOT NULL,
 
             created_at TEXT NOT NULL,
 
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+
+            UNIQUE(user_id, key)
         )
     """)
-
 
     connection.commit()
 
@@ -81,7 +90,11 @@ def initialize_database():
 # SAVE CHAT MESSAGE
 # ============================================================
 
-def save_message(role, content):
+def save_message(
+    user_id,
+    role,
+    content
+):
 
     connection = get_connection()
 
@@ -91,15 +104,17 @@ def save_message(role, content):
         """
         INSERT INTO messages
         (
+            user_id,
             role,
             content,
             created_at
         )
 
-        VALUES (?, ?, ?)
+        VALUES (?, ?, ?, ?)
         """,
 
         (
+            user_id,
             role,
             content,
             datetime.now().isoformat()
@@ -115,7 +130,10 @@ def save_message(role, content):
 # GET RECENT MESSAGES
 # ============================================================
 
-def get_messages(limit=20):
+def get_messages(
+    user_id,
+    limit=20
+):
 
     connection = get_connection()
 
@@ -127,22 +145,25 @@ def get_messages(limit=20):
 
         FROM messages
 
+        WHERE user_id = ?
+
         ORDER BY id DESC
 
         LIMIT ?
         """,
 
-        (limit,)
+        (
+            user_id,
+            limit
+        )
     )
 
     rows = cursor.fetchall()
 
     connection.close()
 
-
     # Oldest → newest
     rows.reverse()
-
 
     return [
         {
@@ -158,14 +179,20 @@ def get_messages(limit=20):
 # CLEAR CHAT
 # ============================================================
 
-def clear_messages():
+def clear_messages(user_id):
 
     connection = get_connection()
 
     cursor = connection.cursor()
 
     cursor.execute(
-        "DELETE FROM messages"
+        """
+        DELETE FROM messages
+
+        WHERE user_id = ?
+        """,
+
+        (user_id,)
     )
 
     connection.commit()
@@ -177,7 +204,11 @@ def clear_messages():
 # SAVE LONG-TERM MEMORY
 # ============================================================
 
-def save_memory(key, value):
+def save_memory(
+    user_id,
+    key,
+    value
+):
 
     connection = get_connection()
 
@@ -185,20 +216,20 @@ def save_memory(key, value):
 
     now = datetime.now().isoformat()
 
-
     cursor.execute(
         """
         INSERT INTO memories
         (
+            user_id,
             key,
             value,
             created_at,
             updated_at
         )
 
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
 
-        ON CONFLICT(key)
+        ON CONFLICT(user_id, key)
 
         DO UPDATE SET
 
@@ -208,13 +239,13 @@ def save_memory(key, value):
         """,
 
         (
+            user_id,
             key,
             value,
             now,
             now
         )
     )
-
 
     connection.commit()
 
@@ -225,7 +256,7 @@ def save_memory(key, value):
 # GET ALL MEMORIES
 # ============================================================
 
-def get_memories():
+def get_memories(user_id):
 
     connection = get_connection()
 
@@ -237,14 +268,17 @@ def get_memories():
 
         FROM memories
 
+        WHERE user_id = ?
+
         ORDER BY updated_at DESC
-        """
+        """,
+
+        (user_id,)
     )
 
     rows = cursor.fetchall()
 
     connection.close()
-
 
     return [
         {
@@ -260,7 +294,10 @@ def get_memories():
 # DELETE MEMORY
 # ============================================================
 
-def delete_memory(key):
+def delete_memory(
+    user_id,
+    key
+):
 
     connection = get_connection()
 
@@ -270,10 +307,15 @@ def delete_memory(key):
         """
         DELETE FROM memories
 
-        WHERE key = ?
+        WHERE user_id = ?
+
+        AND key = ?
         """,
 
-        (key,)
+        (
+            user_id,
+            key
+        )
     )
 
     connection.commit()
@@ -285,14 +327,20 @@ def delete_memory(key):
 # CLEAR ALL MEMORIES
 # ============================================================
 
-def clear_memories():
+def clear_memories(user_id):
 
     connection = get_connection()
 
     cursor = connection.cursor()
 
     cursor.execute(
-        "DELETE FROM memories"
+        """
+        DELETE FROM memories
+
+        WHERE user_id = ?
+        """,
+
+        (user_id,)
     )
 
     connection.commit()
