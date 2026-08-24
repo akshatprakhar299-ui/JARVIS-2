@@ -1,9 +1,43 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  onAuthStateChanged,
+  signOut,
+} from "firebase/auth";
+
+import { auth } from "./firebase";
+import Login from "./Login";
+import Signup from "./Signup";
+
 import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000";
 
 function App() {
+
+  // ============================================================
+  // AUTHENTICATION
+  // ============================================================
+
+  const [user, setUser] = useState(undefined);
+  const [showSignup, setShowSignup] = useState(false);
+
+  useEffect(() => {
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
+        setUser(currentUser);
+      }
+    );
+
+    return () => unsubscribe();
+
+  }, []);
+
+  // ============================================================
+  // CHAT STATE
+  // ============================================================
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,17 +49,23 @@ function App() {
   // ============================================================
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+
+    if (user) {
+      loadHistory();
+    }
+
+  }, [user]);
 
   // ============================================================
   // AUTO SCROLL
   // ============================================================
 
   useEffect(() => {
+
     messagesEndRef.current?.scrollIntoView({
       behavior: "smooth",
     });
+
   }, [messages, loading]);
 
   // ============================================================
@@ -33,64 +73,59 @@ function App() {
   // ============================================================
 
   async function loadHistory() {
-    try {
-      const response = await fetch(`${API_URL}/history`);
 
-      const data = await response.json();
+    try {
+
+      const response =
+        await fetch(`${API_URL}/history`);
+
+      const data =
+        await response.json();
 
       if (data.success) {
         setMessages(data.messages);
       }
+
     } catch (error) {
-      console.error("Could not load history:", error);
+
+      console.error(
+        "Could not load history:",
+        error
+      );
+
     }
   }
 
   // ============================================================
-  // SEND MESSAGE - STREAMING
+  // SEND MESSAGE
   // ============================================================
 
   async function sendMessage() {
+
     const message = input.trim();
 
     if (!message || loading) {
       return;
     }
 
-    // ----------------------------------------------------------
-    // Add user message immediately
-    // ----------------------------------------------------------
-
     setMessages((previous) => [
+
       ...previous,
+
       {
         role: "user",
         content: message,
       },
+
     ]);
 
     setInput("");
     setLoading(true);
 
-    // ----------------------------------------------------------
-    // Add empty JARVIS message
-    // ----------------------------------------------------------
-
-    setMessages((previous) => [
-      ...previous,
-      {
-        role: "assistant",
-        content: "",
-      },
-    ]);
-
     try {
-      // --------------------------------------------------------
-      // Connect to streaming endpoint
-      // --------------------------------------------------------
 
       const response = await fetch(
-        `${API_URL}/chat/stream`,
+        `${API_URL}/chat`,
         {
           method: "POST",
 
@@ -104,137 +139,55 @@ function App() {
         }
       );
 
-      // --------------------------------------------------------
-      // Check server response
-      // --------------------------------------------------------
+      const data =
+        await response.json();
 
-      if (!response.ok) {
+      if (!response.ok || !data.success) {
+
         throw new Error(
-          `Server returned ${response.status}`
+          data.error ||
+          "Something went wrong"
         );
+
       }
 
-      // --------------------------------------------------------
-      // Check streaming support
-      // --------------------------------------------------------
+      setMessages((previous) => [
 
-      if (!response.body) {
-        throw new Error(
-          "Streaming is not supported by this browser."
-        );
-      }
+        ...previous,
 
-      // --------------------------------------------------------
-      // Create stream reader
-      // --------------------------------------------------------
+        {
+          role: "assistant",
+          content: data.message,
+        },
 
-      const reader = response.body.getReader();
+      ]);
 
-      const decoder = new TextDecoder();
-
-      let assistantMessage = "";
-
-      // --------------------------------------------------------
-      // Read stream continuously
-      // --------------------------------------------------------
-
-      while (true) {
-        const { value, done } = await reader.read();
-
-        if (done) {
-          break;
-        }
-
-        // ------------------------------------------------------
-        // Convert bytes to text
-        // ------------------------------------------------------
-
-        const chunk = decoder.decode(value, {
-          stream: true,
-        });
-
-        assistantMessage += chunk;
-
-        // ------------------------------------------------------
-        // Update JARVIS message
-        // ------------------------------------------------------
-
-        setMessages((previous) => {
-          const updated = [...previous];
-
-          const lastIndex = updated.length - 1;
-
-          if (
-            lastIndex >= 0 &&
-            updated[lastIndex].role === "assistant"
-          ) {
-            updated[lastIndex] = {
-              ...updated[lastIndex],
-              content: assistantMessage,
-            };
-          }
-
-          return updated;
-        });
-      }
-
-      // --------------------------------------------------------
-      // Flush decoder
-      // --------------------------------------------------------
-
-      const remainingText = decoder.decode();
-
-      if (remainingText) {
-        assistantMessage += remainingText;
-
-        setMessages((previous) => {
-          const updated = [...previous];
-
-          const lastIndex = updated.length - 1;
-
-          if (
-            lastIndex >= 0 &&
-            updated[lastIndex].role === "assistant"
-          ) {
-            updated[lastIndex] = {
-              ...updated[lastIndex],
-              content: assistantMessage,
-            };
-          }
-
-          return updated;
-        });
-      }
     } catch (error) {
-      console.error("Streaming chat error:", error);
 
-      // --------------------------------------------------------
-      // Display error inside JARVIS message
-      // --------------------------------------------------------
+      console.error(
+        "Chat error:",
+        error
+      );
 
-      setMessages((previous) => {
-        const updated = [...previous];
+      setMessages((previous) => [
 
-        const lastIndex = updated.length - 1;
+        ...previous,
 
-        if (
-          lastIndex >= 0 &&
-          updated[lastIndex].role === "assistant"
-        ) {
-          updated[lastIndex] = {
-            ...updated[lastIndex],
+        {
+          role: "assistant",
 
-            content:
-              "I'm having trouble connecting to my backend. Please make sure JARVIS is running.",
+          content:
+            "I'm having trouble connecting to my backend. Please make sure JARVIS is running.",
 
-            error: true,
-          };
-        }
+          error: true,
+        },
 
-        return updated;
-      });
+      ]);
+
     } finally {
+
       setLoading(false);
+
     }
   }
 
@@ -243,44 +196,146 @@ function App() {
   // ============================================================
 
   function handleKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
+
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+
       event.preventDefault();
 
       sendMessage();
+
     }
   }
 
   // ============================================================
-  // CLEAR CONVERSATION
+  // CLEAR CHAT
   // ============================================================
 
   async function clearChat() {
-    try {
-      const response = await fetch(
-        `${API_URL}/history`,
-        {
-          method: "DELETE",
-        }
-      );
 
-      const data = await response.json();
+    try {
+
+      const response =
+        await fetch(
+          `${API_URL}/history`,
+          {
+            method: "DELETE",
+          }
+        );
+
+      const data =
+        await response.json();
 
       if (data.success) {
+
         setMessages([]);
+
       }
+
     } catch (error) {
+
       console.error(
         "Could not clear history:",
         error
       );
+
     }
   }
 
   // ============================================================
-  // UI
+  // LOGOUT
+  // ============================================================
+
+  async function handleLogout() {
+
+    try {
+
+      await signOut(auth);
+
+      setMessages([]);
+
+    } catch (error) {
+
+      console.error(
+        "Logout error:",
+        error
+      );
+
+    }
+  }
+
+  // ============================================================
+  // AUTH LOADING
+  // ============================================================
+
+  if (user === undefined) {
+
+    return (
+      <div className="auth-loading">
+
+        <h1>JARVIS</h1>
+
+        <p>
+          Initializing authentication...
+        </p>
+
+      </div>
+    );
+
+  }
+
+  // ============================================================
+  // LOGIN
+  // ============================================================
+
+  if (!user && !showSignup) {
+
+    return (
+      <Login
+
+        onLogin={(loggedInUser) => {
+          setUser(loggedInUser);
+        }}
+
+        onSignup={() => {
+          setShowSignup(true);
+        }}
+
+      />
+    );
+
+  }
+
+  // ============================================================
+  // SIGNUP
+  // ============================================================
+
+  if (!user && showSignup) {
+
+    return (
+      <Signup
+
+        onSignup={(newUser) => {
+          setUser(newUser);
+        }}
+
+        onLogin={() => {
+          setShowSignup(false);
+        }}
+
+      />
+    );
+
+  }
+
+  // ============================================================
+  // JARVIS CHAT
   // ============================================================
 
   return (
+
     <div className="jarvis-app">
 
       {/* ======================================================
@@ -296,8 +351,13 @@ function App() {
           </div>
 
           <div>
+
             <h1>JARVIS</h1>
-            <p>PERSONAL AI ASSISTANT</p>
+
+            <p>
+              PERSONAL AI ASSISTANT
+            </p>
+
           </div>
 
         </div>
@@ -305,25 +365,37 @@ function App() {
         <div className="header-right">
 
           <div className="status">
+
             <span className="status-dot"></span>
+
             ONLINE
+
           </div>
+
+          <span className="user-email">
+            {user.email}
+          </span>
 
           <button
             className="clear-button"
             onClick={clearChat}
-            disabled={loading}
           >
             Clear
+          </button>
+
+          <button
+            className="logout-button"
+            onClick={handleLogout}
+          >
+            Logout
           </button>
 
         </div>
 
       </header>
 
-
       {/* ======================================================
-          CHAT AREA
+          CHAT
       ====================================================== */}
 
       <main className="chat-container">
@@ -333,10 +405,14 @@ function App() {
           <div className="welcome">
 
             <div className="welcome-orb">
+
               <div className="orb-core"></div>
+
             </div>
 
-            <h2>How can I assist you?</h2>
+            <h2>
+              How can I assist you?
+            </h2>
 
             <p>
               I'm JARVIS, your personal AI assistant.
@@ -356,7 +432,9 @@ function App() {
 
               <button
                 onClick={() =>
-                  setInput("Help me plan my day")
+                  setInput(
+                    "Help me plan my day"
+                  )
                 }
               >
                 Plan my day
@@ -380,80 +458,73 @@ function App() {
 
           <div className="messages">
 
-            {messages.map((message, index) => (
-
-              <div
-                key={index}
-                className={`message-row ${message.role}`}
-              >
-
-                {message.role === "assistant" && (
-                  <div className="message-avatar">
-                    J
-                  </div>
-                )}
+            {messages.map(
+              (message, index) => (
 
                 <div
-                  className={`message-bubble ${
-                    message.error ? "error" : ""
-                  }`}
+                  key={index}
+                  className={
+                    `message-row ${message.role}`
+                  }
                 >
 
-                  {message.content}
+                  {message.role ===
+                    "assistant" && (
 
-                  {/* Streaming cursor */}
+                    <div className="message-avatar">
+                      J
+                    </div>
 
-                  {loading &&
-                    message.role === "assistant" &&
-                    index === messages.length - 1 &&
-                    message.content && (
-                      <span className="streaming-cursor">
-                        ▌
-                      </span>
-                    )}
+                  )}
+
+                  <div
+                    className={
+                      `message-bubble ${
+                        message.error
+                          ? "error"
+                          : ""
+                      }`
+                    }
+                  >
+                    {message.content}
+                  </div>
+
+                </div>
+
+              )
+            )}
+
+            {/* TYPING */}
+
+            {loading && (
+
+              <div className="message-row assistant">
+
+                <div className="message-avatar">
+                  J
+                </div>
+
+                <div className="message-bubble typing">
+
+                  <span></span>
+                  <span></span>
+                  <span></span>
 
                 </div>
 
               </div>
 
-            ))}
+            )}
 
-            {/* =================================================
-                INITIAL TYPING INDICATOR
-                ================================================= */}
-
-            {loading &&
-              messages.length > 0 &&
-              messages[messages.length - 1].role ===
-                "assistant" &&
-              messages[messages.length - 1].content === "" && (
-
-                <div className="message-row assistant">
-
-                  <div className="message-avatar">
-                    J
-                  </div>
-
-                  <div className="message-bubble typing">
-
-                    <span></span>
-                    <span></span>
-                    <span></span>
-
-                  </div>
-
-                </div>
-
-              )}
-
-            <div ref={messagesEndRef}></div>
+            <div
+              ref={messagesEndRef}
+            />
 
           </div>
 
         )}
 
       </main>
-
 
       {/* ======================================================
           INPUT
@@ -465,19 +536,29 @@ function App() {
 
           <textarea
             value={input}
+
             onChange={(event) =>
               setInput(event.target.value)
             }
+
             onKeyDown={handleKeyDown}
+
             placeholder="Ask JARVIS anything..."
+
             rows="1"
+
             disabled={loading}
           />
 
           <button
             className="send-button"
+
             onClick={sendMessage}
-            disabled={!input.trim() || loading}
+
+            disabled={
+              !input.trim() ||
+              loading
+            }
           >
             ↑
           </button>
@@ -491,6 +572,7 @@ function App() {
       </footer>
 
     </div>
+
   );
 }
 
