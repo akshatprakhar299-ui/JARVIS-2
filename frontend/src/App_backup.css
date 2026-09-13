@@ -1,0 +1,762 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family:
+    Inter,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  background: #05070a;
+  color: #e8f7ff;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+
+/* ============================================================
+   MAIN APPLICATION
+   ============================================================ */
+
+.jarvis-app {
+  width: 100%;
+  height: 100vh;
+
+  display: flex;
+  flex-direction: column;
+
+  background:
+    radial-gradient(
+      circle at 50% 25%,
+      rgba(0, 180, 255, 0.08),
+      transparent 35%
+    ),
+    #05070a;
+}
+
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+.jarvis-header {
+  height: 72px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 0 32px;
+
+  border-bottom: 1px solid rgba(0, 200, 255, 0.15);
+
+  background: rgba(5, 7, 10, 0.85);
+
+  backdrop-filter: blur(15px);
+}
+
+
+/* ============================================================
+   BRAND
+   ============================================================ */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand h1 {
+  margin: 0;
+
+  font-size: 20px;
+  letter-spacing: 4px;
+
+  color: #dff7ff;
+}
+
+.brand p {
+  margin: 3px 0 0;
+
+  font-size: 9px;
+  letter-spacing: 2px;
+
+  color: #5b8394;
+}
+
+
+/* ============================================================
+   BRAND ORB
+   ============================================================ */
+
+.brand-orb {
+  width: 34px;
+  height: 34px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(0, 200, 255, 0.7);
+
+  box-shadow:
+    0 0 12px rgba(0, 200, 255, 0.3),
+    inset 0 0 10px rgba(0, 200, 255, 0.15);
+}
+
+.brand-orb span {
+  width: 10px;
+  height: 10px;
+
+  border-radius: 50%;
+
+  background: #00c8ff;
+
+  box-shadow:
+    0 0 10px #00c8ff,
+    0 0 20px rgba(0, 200, 255, 0.7);
+}
+
+
+/* ============================================================
+   HEADER RIGHT
+   ============================================================ */
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  font-size: 10px;
+  letter-spacing: 2px;
+
+  color: #72dfff;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #00eaff;
+
+  box-shadow: 0 0 10px #00eaff;
+}
+
+.clear-button {
+  border: 1px solid rgba(0, 200, 255, 0.2);
+
+  background: transparent;
+
+  color: #6f95a5;
+
+  padding: 7px 13px;
+
+  border-radius: 6px;
+
+  font-size: 12px;
+}
+
+.clear-button:hover {
+  color: #dff7ff;
+
+  border-color: rgba(0, 200, 255, 0.5);
+}
+
+
+/* ============================================================
+   CHAT CONTAINER
+   ============================================================ */
+
+.chat-container {
+  flex: 1;
+
+  overflow-y: auto;
+
+  width: 100%;
+}
+
+.messages {
+  width: min(900px, 92%);
+
+  margin: 0 auto;
+
+  padding: 40px 0;
+}
+
+
+/* ============================================================
+   MESSAGE ROW
+   ============================================================ */
+
+.message-row {
+  display: flex;
+
+  margin-bottom: 24px;
+
+  animation: messageIn 0.25s ease;
+}
+
+.message-row.user {
+  justify-content: flex-end;
+}
+
+.message-row.assistant {
+  justify-content: flex-start;
+  align-items: flex-start;
+
+  gap: 12px;
+}
+
+
+/* ============================================================
+   MESSAGE AVATAR
+   ============================================================ */
+
+.message-avatar {
+  width: 34px;
+  height: 34px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(0, 200, 255, 0.5);
+
+  color: #7ee8ff;
+
+  font-size: 13px;
+
+  box-shadow:
+    0 0 12px rgba(0, 200, 255, 0.15);
+}
+
+
+/* ============================================================
+   MESSAGE BUBBLE
+   ============================================================ */
+
+.message-bubble {
+  max-width: 75%;
+
+  padding: 13px 17px;
+
+  border-radius: 14px;
+
+  line-height: 1.6;
+
+  font-size: 14px;
+
+  white-space: pre-wrap;
+}
+
+.message-row.user .message-bubble {
+  background: #0b1820;
+
+  border: 1px solid rgba(0, 200, 255, 0.16);
+
+  color: #dff8ff;
+
+  border-bottom-right-radius: 4px;
+}
+
+.message-row.assistant .message-bubble {
+  background: rgba(0, 200, 255, 0.035);
+
+  border: 1px solid rgba(0, 200, 255, 0.08);
+
+  color: #c9e6ee;
+
+  border-bottom-left-radius: 4px;
+}
+
+.message-bubble.error {
+  color: #ff9b9b;
+}
+
+
+/* ============================================================
+   TYPING INDICATOR
+   ============================================================ */
+
+.typing {
+  display: flex;
+
+  align-items: center;
+
+  gap: 5px;
+
+  height: 44px;
+}
+
+.typing span {
+  width: 6px;
+  height: 6px;
+
+  border-radius: 50%;
+
+  background: #5bdcff;
+
+  animation: typing 1.2s infinite;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.typing span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+
+/* ============================================================
+   WELCOME SCREEN
+   ============================================================ */
+
+.welcome {
+  height: 100%;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  text-align: center;
+
+  padding-bottom: 60px;
+}
+
+.welcome h2 {
+  margin: 24px 0 8px;
+
+  font-size: 30px;
+
+  font-weight: 500;
+
+  letter-spacing: -0.5px;
+}
+
+.welcome p {
+  margin: 0;
+
+  color: #688795;
+
+  font-size: 14px;
+}
+
+
+/* ============================================================
+   WELCOME ORB
+   ============================================================ */
+
+.welcome-orb {
+  width: 110px;
+  height: 110px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  border: 1px solid rgba(0, 200, 255, 0.5);
+
+  box-shadow:
+    0 0 30px rgba(0, 200, 255, 0.15),
+    inset 0 0 30px rgba(0, 200, 255, 0.08);
+
+  animation: pulse 3s infinite;
+}
+
+.orb-core {
+  width: 48px;
+  height: 48px;
+
+  border-radius: 50%;
+
+  background: #00c8ff;
+
+  box-shadow:
+    0 0 15px #00c8ff,
+    0 0 40px rgba(0, 200, 255, 0.6);
+}
+
+
+/* ============================================================
+   SUGGESTIONS
+   ============================================================ */
+
+.suggestions {
+  display: flex;
+
+  gap: 10px;
+
+  margin-top: 28px;
+
+  flex-wrap: wrap;
+
+  justify-content: center;
+}
+
+.suggestions button {
+  padding: 9px 14px;
+
+  border-radius: 20px;
+
+  border: 1px solid rgba(0, 200, 255, 0.15);
+
+  background: rgba(0, 200, 255, 0.035);
+
+  color: #78a4b2;
+
+  font-size: 12px;
+}
+
+.suggestions button:hover {
+  color: #dff7ff;
+
+  border-color: rgba(0, 200, 255, 0.4);
+}
+
+
+/* ============================================================
+   INPUT AREA
+   ============================================================ */
+
+.input-area {
+  width: min(900px, 92%);
+
+  margin: 0 auto;
+
+  padding: 12px 0 20px;
+}
+
+.input-wrapper {
+  display: flex;
+
+  align-items: flex-end;
+
+  gap: 10px;
+
+  padding: 9px 10px 9px 16px;
+
+  border: 1px solid rgba(0, 200, 255, 0.15);
+
+  border-radius: 14px;
+
+  background: rgba(8, 15, 20, 0.9);
+
+  box-shadow:
+    0 0 25px rgba(0, 0, 0, 0.25);
+}
+
+.input-wrapper:focus-within {
+  border-color: rgba(0, 200, 255, 0.4);
+
+  box-shadow:
+    0 0 25px rgba(0, 200, 255, 0.06);
+}
+
+textarea {
+  flex: 1;
+
+  resize: none;
+
+  min-height: 24px;
+  max-height: 130px;
+
+  border: none;
+
+  outline: none;
+
+  background: transparent;
+
+  color: #dff7ff;
+
+  font-size: 14px;
+
+  line-height: 1.5;
+}
+
+textarea::placeholder {
+  color: #4d6874;
+}
+
+
+/* ============================================================
+   SEND BUTTON
+   ============================================================ */
+
+.send-button {
+  width: 36px;
+  height: 36px;
+
+  flex-shrink: 0;
+
+  border: none;
+
+  border-radius: 9px;
+
+  background: #00bce8;
+
+  color: #001017;
+
+  font-size: 20px;
+
+  font-weight: bold;
+
+  transition: 0.2s;
+}
+
+.send-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 0 15px rgba(0, 200, 255, 0.4);
+}
+
+.send-button:disabled {
+  opacity: 0.25;
+
+  cursor: not-allowed;
+}
+
+
+/* ============================================================
+   INPUT HINT
+   ============================================================ */
+
+.input-hint {
+  text-align: center;
+
+  margin: 8px 0 0;
+
+  color: #3e5863;
+
+  font-size: 10px;
+}
+
+
+/* ============================================================
+   ANIMATIONS
+   ============================================================ */
+
+@keyframes messageIn {
+  from {
+    opacity: 0;
+
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+
+    transform: translateY(0);
+  }
+}
+
+@keyframes typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+
+    transform: translateY(0);
+  }
+
+  30% {
+    opacity: 1;
+
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+
+/* ============================================================
+   MOBILE
+   ============================================================ */
+
+@media (max-width: 600px) {
+  .jarvis-header {
+    padding: 0 16px;
+  }
+
+  .brand h1 {
+    font-size: 17px;
+  }
+
+  .status {
+    display: none;
+  }
+
+  .message-bubble {
+    max-width: 85%;
+  }
+
+  .welcome h2 {
+    font-size: 24px;
+  }
+
+  .suggestions {
+    padding: 0 15px;
+  }
+}
+
+/* ============================================================
+   AUTHENTICATION
+   ============================================================ */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020609;
+}
+
+.auth-card {
+  width: 380px;
+  padding: 40px;
+  border: 1px solid #063746;
+  border-radius: 16px;
+  background: #071015;
+  box-shadow: 0 0 40px rgba(0, 200, 255, 0.08);
+  text-align: center;
+}
+
+.auth-card h1 {
+  color: #00cfff;
+  letter-spacing: 5px;
+  margin-bottom: 8px;
+}
+
+.auth-card p {
+  color: #78909c;
+  margin-bottom: 25px;
+}
+
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-card input {
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid #17404c;
+  background: #020609;
+  color: white;
+  outline: none;
+}
+
+.auth-card input:focus {
+  border-color: #00cfff;
+}
+
+.auth-card form button {
+  padding: 14px;
+  border: none;
+  border-radius: 8px;
+  background: #00a9d6;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.auth-card form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.link-button {
+  border: none;
+  background: none;
+  color: #00cfff;
+  cursor: pointer;
+  margin-left: 5px;
+}
+
+.auth-error {
+  color: #ff5c5c !important;
+  font-size: 13px;
+}
+
+.auth-loading {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #020609;
+  color: white;
+}
+
+.auth-loading h1 {
+  color: #00cfff;
+  letter-spacing: 6px;
+}
+
+.user-email {
+  color: #78909c;
+  font-size: 12px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logout-button {
+  padding: 7px 12px;
+  border: 1px solid #163d48;
+  border-radius: 6px;
+  background: transparent;
+  color: #00cfff;
+  cursor: pointer;
+}
+
+.logout-button:hover {
+  background: #08232b;
+}

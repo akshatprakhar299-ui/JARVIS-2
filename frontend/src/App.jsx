@@ -1,4 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 
 import {
   onAuthStateChanged,
@@ -13,8 +18,25 @@ import Signup from "./Signup";
 import "./App.css";
 
 
+// ============================================================
+// CONFIGURATION
+// ============================================================
+
 const API_URL = "http://127.0.0.1:8000";
 
+
+// ============================================================
+// BROWSER SPEECH RECOGNITION
+// ============================================================
+
+const SpeechRecognitionAPI =
+  window.SpeechRecognition ||
+  window.webkitSpeechRecognition;
+
+
+// ============================================================
+// APP
+// ============================================================
 
 function App() {
 
@@ -27,25 +49,8 @@ function App() {
   const [showSignup, setShowSignup] = useState(false);
 
 
-  useEffect(() => {
-
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (currentUser) => {
-
-        setUser(currentUser);
-
-      }
-    );
-
-
-    return () => unsubscribe();
-
-  }, []);
-
-
   // ============================================================
-  // CHAT STATE
+  // CHAT
   // ============================================================
 
   const [messages, setMessages] = useState([]);
@@ -55,11 +60,64 @@ function App() {
   const [loading, setLoading] = useState(false);
 
 
-  const messagesEndRef = useRef(null);
+  // ============================================================
+  // VOICE
+  // ============================================================
+
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+
+  const [listening, setListening] = useState(false);
 
 
   // ============================================================
-  // LOAD CHAT HISTORY WHEN USER LOGS IN
+  // REFS
+  // ============================================================
+
+  const messagesEndRef = useRef(null);
+
+  const recognitionRef = useRef(null);
+
+  const shouldListenRef = useRef(false);
+
+  const speakingRef = useRef(false);
+
+  const voiceModeRef = useRef("off");
+
+  const voiceEnabledRef = useRef(false);
+
+  const sendMessageRef = useRef(null);
+
+  const restartTimerRef = useRef(null);
+
+
+  // ============================================================
+  // FIREBASE AUTH
+  // ============================================================
+
+  useEffect(() => {
+
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        (currentUser) => {
+
+          setUser(currentUser);
+
+        }
+      );
+
+
+    return () => {
+
+      unsubscribe();
+
+    };
+
+  }, []);
+
+
+  // ============================================================
+  // LOAD HISTORY
   // ============================================================
 
   useEffect(() => {
@@ -87,7 +145,7 @@ function App() {
 
 
   // ============================================================
-  // GET FIREBASE ID TOKEN
+  // AUTH TOKEN
   // ============================================================
 
   async function getAuthToken() {
@@ -95,23 +153,19 @@ function App() {
     if (!auth.currentUser) {
 
       throw new Error(
-        "User is not authenticated"
+        "User is not authenticated."
       );
 
     }
 
 
-    const token =
-      await auth.currentUser.getIdToken();
-
-
-    return token;
+    return await auth.currentUser.getIdToken();
 
   }
 
 
   // ============================================================
-  // LOAD HISTORY
+  // LOAD CHAT HISTORY
   // ============================================================
 
   async function loadHistory() {
@@ -122,16 +176,18 @@ function App() {
         await getAuthToken();
 
 
-      const response = await fetch(
-        `${API_URL}/history`,
-        {
-          method: "GET",
+      const response =
+        await fetch(
+          `${API_URL}/history`,
+          {
+            method: "GET",
 
-          headers: {
-            "Authorization": `Bearer ${token}`,
-          },
-        }
-      );
+            headers: {
+              "Authorization":
+                `Bearer ${token}`,
+            },
+          }
+        );
 
 
       const data =
@@ -142,7 +198,7 @@ function App() {
 
         throw new Error(
           data.detail ||
-          "Could not load history"
+          "Could not load history."
         );
 
       }
@@ -151,7 +207,7 @@ function App() {
       if (data.success) {
 
         setMessages(
-          data.messages
+          data.messages || []
         );
 
       }
@@ -169,21 +225,632 @@ function App() {
 
 
   // ============================================================
-  // SEND MESSAGE
+  // TEXT TO SPEECH
   // ============================================================
 
-  async function sendMessage() {
+  function speakText(
+    text,
+    onFinished = null
+  ) {
 
-    const message =
-      input.trim();
+    if (!text) {
 
+      if (onFinished) {
 
-    if (!message || loading) {
+        onFinished();
+
+      }
 
       return;
 
     }
 
+
+    // ----------------------------------------------------------
+    // Mark JARVIS as speaking BEFORE starting speech.
+    // This prevents the microphone from processing JARVIS.
+    // ----------------------------------------------------------
+
+    speakingRef.current = true;
+
+
+    if (!window.speechSynthesis) {
+
+      console.warn(
+        "Speech synthesis is not supported."
+      );
+
+
+      speakingRef.current = false;
+
+
+      if (onFinished) {
+
+        onFinished();
+
+      }
+
+
+      return;
+
+    }
+
+
+    // Stop previous speech.
+
+    window.speechSynthesis.cancel();
+
+
+    const utterance =
+      new SpeechSynthesisUtterance(
+        text
+      );
+
+
+    // ==========================================================
+    // VOICE CHARACTER
+    // ==========================================================
+
+    utterance.rate = 0.92;
+
+    utterance.pitch = 0.82;
+
+    utterance.volume = 1;
+
+
+    // ==========================================================
+    // FIND A GOOD ENGLISH VOICE
+    // ==========================================================
+
+    const voices =
+      window.speechSynthesis.getVoices();
+
+
+    const preferredVoice =
+      voices.find(
+        (voice) =>
+          /Microsoft David/i.test(
+            voice.name
+          )
+      ) ||
+
+      voices.find(
+        (voice) =>
+          /Microsoft Mark/i.test(
+            voice.name
+          )
+      ) ||
+
+      voices.find(
+        (voice) =>
+          /Google UK English Male/i.test(
+            voice.name
+          )
+      ) ||
+
+      voices.find(
+        (voice) =>
+          /English.*Male/i.test(
+            voice.name
+          )
+      ) ||
+
+      voices.find(
+        (voice) =>
+          /^en[-_]/i.test(
+            voice.lang
+          )
+      );
+
+
+    if (preferredVoice) {
+
+      utterance.voice =
+        preferredVoice;
+
+    }
+
+
+    // ==========================================================
+    // SPEECH FINISHED
+    // ==========================================================
+
+    utterance.onend = () => {
+
+      speakingRef.current = false;
+
+
+      if (onFinished) {
+
+        onFinished();
+
+      }
+
+    };
+
+
+    // ==========================================================
+    // SPEECH ERROR
+    // ==========================================================
+
+    utterance.onerror = () => {
+
+      speakingRef.current = false;
+
+
+      if (onFinished) {
+
+        onFinished();
+
+      }
+
+    };
+
+
+    window.speechSynthesis.speak(
+      utterance
+    );
+
+  }
+
+
+  // ============================================================
+  // START RECOGNITION SAFELY
+  // ============================================================
+
+  function startRecognition() {
+
+    const recognition =
+      recognitionRef.current;
+
+
+    if (!recognition) {
+
+      return;
+
+    }
+
+
+    if (
+      !shouldListenRef.current
+    ) {
+
+      return;
+
+    }
+
+
+    if (
+      speakingRef.current
+    ) {
+
+      return;
+
+    }
+
+
+    if (
+      voiceModeRef.current !== "wake" &&
+      voiceModeRef.current !== "question"
+    ) {
+
+      return;
+
+    }
+
+
+    try {
+
+      recognition.start();
+
+    } catch (error) {
+
+      // Chrome throws InvalidStateError if
+      // recognition is already running.
+      // That's harmless.
+
+      console.log(
+        "Recognition start:",
+        error.message
+      );
+
+    }
+
+  }
+
+
+  // ============================================================
+  // STOP RECOGNITION
+  // ============================================================
+
+  function stopRecognition() {
+
+    const recognition =
+      recognitionRef.current;
+
+
+    if (!recognition) {
+
+      return;
+
+    }
+
+
+    try {
+
+      recognition.stop();
+
+    } catch {}
+
+  }
+
+
+  // ============================================================
+  // SEND MESSAGE
+  // ============================================================
+
+  const sendMessage = useCallback(
+    async (voiceMessage = null) => {
+
+      const message =
+        voiceMessage !== null
+          ? voiceMessage.trim()
+          : input.trim();
+
+
+      if (!message) {
+
+        return;
+
+      }
+
+
+      if (!user) {
+
+        return;
+
+      }
+
+
+      if (loading) {
+
+        return;
+
+      }
+
+
+      // ========================================================
+      // IF THIS IS A VOICE QUESTION
+      // ========================================================
+
+      const isVoiceQuestion =
+        voiceMessage !== null;
+
+
+      if (isVoiceQuestion) {
+
+        voiceModeRef.current =
+          "processing";
+
+        stopRecognition();
+
+      }
+
+
+      // ========================================================
+      // DISPLAY USER MESSAGE
+      // ========================================================
+
+      setMessages(
+        (previous) => [
+
+          ...previous,
+
+          {
+            role: "user",
+            content: message,
+          },
+
+        ]
+      );
+
+
+      setInput("");
+
+      setLoading(true);
+
+
+      try {
+
+        // ======================================================
+        // FIREBASE TOKEN
+        // ======================================================
+
+        const token =
+          await getAuthToken();
+
+
+        // ======================================================
+        // BACKEND REQUEST
+        // ======================================================
+
+        const response =
+          await fetch(
+            `${API_URL}/chat`,
+            {
+              method: "POST",
+
+              headers: {
+
+                "Content-Type":
+                  "application/json",
+
+                "Authorization":
+                  `Bearer ${token}`,
+
+              },
+
+              body: JSON.stringify({
+
+                message: message,
+
+              }),
+
+            }
+          );
+
+
+        // ======================================================
+        // HANDLE NON-JSON RESPONSE
+        // ======================================================
+
+        let data;
+
+        try {
+
+          data =
+            await response.json();
+
+        } catch {
+
+          throw new Error(
+            `Backend returned HTTP ${response.status}`
+          );
+
+        }
+
+
+        // ======================================================
+        // AUTH ERROR
+        // ======================================================
+
+        if (
+          response.status === 401
+        ) {
+
+          throw new Error(
+            "Your login session has expired. Please login again."
+          );
+
+        }
+
+
+        // ======================================================
+        // BACKEND ERROR
+        // ======================================================
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+
+          throw new Error(
+            data.error ||
+            data.detail ||
+            "Something went wrong with JARVIS."
+          );
+
+        }
+
+
+        // ======================================================
+        // ASSISTANT RESPONSE
+        // ======================================================
+
+        const assistantMessage =
+          data.message ||
+          "I couldn't generate a response.";
+
+
+        setMessages(
+          (previous) => [
+
+            ...previous,
+
+            {
+              role: "assistant",
+              content: assistantMessage,
+            },
+
+          ]
+        );
+
+
+        // ======================================================
+        // VOICE RESPONSE
+        // ======================================================
+
+        if (
+          isVoiceQuestion &&
+          voiceEnabledRef.current &&
+          shouldListenRef.current
+        ) {
+
+          voiceModeRef.current =
+            "speaking";
+
+
+          speakText(
+            assistantMessage,
+            () => {
+
+              // ------------------------------------------------
+              // JARVIS HAS FINISHED SPEAKING.
+              //
+              // NOW AND ONLY NOW do we return to wake mode.
+              // ------------------------------------------------
+
+              if (
+                shouldListenRef.current &&
+                voiceEnabledRef.current
+              ) {
+
+                voiceModeRef.current =
+                  "wake";
+
+
+                setTimeout(() => {
+
+                  startRecognition();
+
+                }, 500);
+
+              } else {
+
+                voiceModeRef.current =
+                  "off";
+
+              }
+
+            }
+          );
+
+        } else {
+
+          // ----------------------------------------------------
+          // If it was typed input, don't activate voice.
+          // If voice mode somehow disappeared, return to wake.
+          // ----------------------------------------------------
+
+          if (
+            isVoiceQuestion &&
+            shouldListenRef.current
+          ) {
+
+            voiceModeRef.current =
+              "wake";
+
+            setTimeout(() => {
+
+              startRecognition();
+
+            }, 500);
+
+          }
+
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Chat error:",
+          error
+        );
+
+
+        const errorMessage =
+          error.message ||
+          "I'm having trouble connecting to my backend.";
+
+
+        setMessages(
+          (previous) => [
+
+            ...previous,
+
+            {
+              role: "assistant",
+              content: errorMessage,
+              error: true,
+            },
+
+          ]
+        );
+
+
+        // ======================================================
+        // SPEAK ERROR IF VOICE QUESTION
+        // ======================================================
+
+        if (
+          isVoiceQuestion &&
+          voiceEnabledRef.current &&
+          shouldListenRef.current
+        ) {
+
+          voiceModeRef.current =
+            "speaking";
+
+
+          speakText(
+            errorMessage,
+            () => {
+
+              if (
+                shouldListenRef.current &&
+                voiceEnabledRef.current
+              ) {
+
+                voiceModeRef.current =
+                  "wake";
+
+
+                setTimeout(() => {
+
+                  startRecognition();
+
+                }, 500);
+
+              }
+
+            }
+          );
+
+        }
+
+      } finally {
+
+        setLoading(false);
+
+      }
+
+    },
+
+    [
+      input,
+      user,
+      loading,
+    ]
+  );
+
+
+  // ============================================================
+  // KEEP LATEST SEND FUNCTION FOR SPEECH CALLBACK
+  // ============================================================
+
+  useEffect(() => {
+
+    sendMessageRef.current =
+      sendMessage;
+
+  }, [sendMessage]);
+
+
+  // ============================================================
+  // VOICE RECOGNITION INITIALIZATION
+  // ============================================================
+
+  useEffect(() => {
 
     if (!user) {
 
@@ -192,150 +859,596 @@ function App() {
     }
 
 
-    // ----------------------------------------------------------
-    // Show user message immediately
-    // ----------------------------------------------------------
+    if (!SpeechRecognitionAPI) {
 
-    setMessages(
-      (previous) => [
-
-        ...previous,
-
-        {
-          role: "user",
-          content: message,
-        },
-
-      ]
-    );
-
-
-    setInput("");
-
-    setLoading(true);
-
-
-    try {
-
-      // --------------------------------------------------------
-      // Get Firebase token
-      // --------------------------------------------------------
-
-      const token =
-        await getAuthToken();
-
-
-      // --------------------------------------------------------
-      // Send authenticated request
-      // --------------------------------------------------------
-
-      const response = await fetch(
-        `${API_URL}/chat`,
-        {
-          method: "POST",
-
-          headers: {
-
-            "Content-Type":
-              "application/json",
-
-            "Authorization":
-              `Bearer ${token}`,
-
-          },
-
-          body: JSON.stringify({
-
-            message: message,
-
-          }),
-
-        }
+      console.warn(
+        "Speech recognition is not supported in this browser."
       );
 
+      return;
 
-      const data =
-        await response.json();
-
-
-      // --------------------------------------------------------
-      // Handle authentication error
-      // --------------------------------------------------------
-
-      if (response.status === 401) {
-
-        throw new Error(
-          "Your login session has expired. Please login again."
-        );
-
-      }
+    }
 
 
-      // --------------------------------------------------------
-      // Handle other errors
-      // --------------------------------------------------------
+    const recognition =
+      new SpeechRecognitionAPI();
+
+
+    recognition.continuous =
+      true;
+
+
+    recognition.interimResults =
+      true;
+
+
+    recognition.lang =
+      "en-IN";
+
+
+    recognition.maxAlternatives =
+      1;
+
+
+    recognitionRef.current =
+      recognition;
+
+
+    // ==========================================================
+    // ON START
+    // ==========================================================
+
+    recognition.onstart = () => {
+
+      setListening(true);
+
+    };
+
+
+    // ==========================================================
+    // ON END
+    // ==========================================================
+
+    recognition.onend = () => {
+
+      setListening(false);
+
+
+      // NEVER restart while JARVIS is speaking.
 
       if (
-        !response.ok ||
-        !data.success
+        speakingRef.current
       ) {
 
-        throw new Error(
-          data.error ||
-          "Something went wrong"
+        return;
+
+      }
+
+
+      // NEVER restart when voice mode is off.
+
+      if (
+        !shouldListenRef.current ||
+        !voiceEnabledRef.current
+      ) {
+
+        return;
+
+      }
+
+
+      // Only wake/question modes should restart.
+
+      if (
+        voiceModeRef.current !== "wake" &&
+        voiceModeRef.current !== "question"
+      ) {
+
+        return;
+
+      }
+
+
+      // Clear previous timer.
+
+      if (
+        restartTimerRef.current
+      ) {
+
+        clearTimeout(
+          restartTimerRef.current
         );
 
       }
 
 
-      // --------------------------------------------------------
-      // Add JARVIS response
-      // --------------------------------------------------------
+      restartTimerRef.current =
+        setTimeout(() => {
 
-      setMessages(
-        (previous) => [
+          startRecognition();
 
-          ...previous,
+        }, 400);
 
-          {
-            role: "assistant",
-            content: data.message,
-          },
+    };
 
-        ]
+
+    // ==========================================================
+    // ON ERROR
+    // ==========================================================
+
+    recognition.onerror = (event) => {
+
+      console.log(
+        "Speech recognition:",
+        event.error
       );
 
 
-    } catch (error) {
+      if (
+        event.error === "not-allowed" ||
+        event.error === "service-not-allowed"
+      ) {
 
-      console.error(
-        "Chat error:",
-        error
+        shouldListenRef.current =
+          false;
+
+
+        voiceEnabledRef.current =
+          false;
+
+
+        setVoiceEnabled(false);
+
+        setListening(false);
+
+
+        voiceModeRef.current =
+          "off";
+
+      }
+
+    };
+
+
+    // ==========================================================
+    // ON RESULT
+    // ==========================================================
+
+    recognition.onresult = (event) => {
+
+      // ========================================================
+      // CRITICAL:
+      // Ignore EVERYTHING while JARVIS is speaking.
+      // This prevents JARVIS hearing himself.
+      // ========================================================
+
+      if (
+        speakingRef.current
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        !shouldListenRef.current
+      ) {
+
+        return;
+
+      }
+
+
+      // ========================================================
+      // WAKE WORD MODE
+      // ========================================================
+
+      if (
+        voiceModeRef.current === "wake"
+      ) {
+
+        let transcript = "";
+
+
+        for (
+          let i = event.resultIndex;
+          i < event.results.length;
+          i++
+        ) {
+
+          transcript +=
+            event.results[i][0].transcript;
+
+        }
+
+
+        transcript =
+          transcript.trim();
+
+
+        if (!transcript) {
+
+          return;
+
+        }
+
+
+        const lower =
+          transcript.toLowerCase();
+
+
+        // ------------------------------------------------------
+        // Detect:
+        //
+        // "Hi JARVIS"
+        // "Hey JARVIS"
+        // "Hello JARVIS"
+        // "JARVIS"
+        // ------------------------------------------------------
+
+        if (
+          lower.includes("jarvis")
+        ) {
+
+          console.log(
+            "Wake word detected:",
+            transcript
+          );
+
+
+          // ----------------------------------------------------
+          // IMPORTANT:
+          // Change state FIRST.
+          // ----------------------------------------------------
+
+          voiceModeRef.current =
+            "speaking";
+
+
+          // ----------------------------------------------------
+          // Stop microphone BEFORE speaking.
+          // ----------------------------------------------------
+
+          stopRecognition();
+
+
+          // ----------------------------------------------------
+          // Say ONLY "Yes boss."
+          // ----------------------------------------------------
+
+          speakText(
+            "Yes boss.",
+            () => {
+
+              // ------------------------------------------------
+              // "Yes boss." is COMPLETELY FINISHED.
+              //
+              // Now switch to question mode.
+              // ------------------------------------------------
+
+              if (
+                shouldListenRef.current &&
+                voiceEnabledRef.current
+              ) {
+
+                voiceModeRef.current =
+                  "question";
+
+
+                setTimeout(() => {
+
+                  startRecognition();
+
+                }, 600);
+
+              }
+
+            }
+          );
+
+        }
+
+
+        return;
+
+      }
+
+
+      // ========================================================
+      // QUESTION MODE
+      // ========================================================
+
+      if (
+        voiceModeRef.current ===
+        "question"
+      ) {
+
+        let transcript = "";
+
+
+        for (
+          let i = event.resultIndex;
+          i < event.results.length;
+          i++
+        ) {
+
+          transcript +=
+            event.results[i][0].transcript;
+
+        }
+
+
+        transcript =
+          transcript.trim();
+
+
+        if (!transcript) {
+
+          return;
+
+        }
+
+
+        const lastResult =
+          event.results[
+            event.results.length - 1
+          ];
+
+
+        // ------------------------------------------------------
+        // We ONLY send FINAL speech.
+        // ------------------------------------------------------
+
+        if (
+          lastResult &&
+          lastResult.isFinal
+        ) {
+
+          const question =
+            transcript.trim();
+
+
+          if (!question) {
+
+            return;
+
+          }
+
+
+          console.log(
+            "Voice question:",
+            question
+          );
+
+
+          // ----------------------------------------------------
+          // Immediately change state so duplicate recognition
+          // results cannot trigger another request.
+          // ----------------------------------------------------
+
+          voiceModeRef.current =
+            "processing";
+
+
+          stopRecognition();
+
+
+          if (
+            sendMessageRef.current
+          ) {
+
+            sendMessageRef.current(
+              question
+            );
+
+          }
+
+        }
+
+      }
+
+    };
+
+
+    // ==========================================================
+    // CLEANUP
+    // ==========================================================
+
+    return () => {
+
+      shouldListenRef.current =
+        false;
+
+
+      voiceEnabledRef.current =
+        false;
+
+
+      if (
+        restartTimerRef.current
+      ) {
+
+        clearTimeout(
+          restartTimerRef.current
+        );
+
+      }
+
+
+      try {
+
+        recognition.stop();
+
+      } catch {}
+
+
+      if (
+        window.speechSynthesis
+      ) {
+
+        window.speechSynthesis.cancel();
+
+      }
+
+
+      speakingRef.current =
+        false;
+
+
+      recognitionRef.current =
+        null;
+
+    };
+
+  }, [user]);
+
+
+  // ============================================================
+  // START VOICE MODE
+  // ============================================================
+
+  function startVoiceMode() {
+
+    if (!SpeechRecognitionAPI) {
+
+      alert(
+        "Speech recognition is not supported. Please use Google Chrome."
       );
 
+      return;
 
-      setMessages(
-        (previous) => [
+    }
 
-          ...previous,
 
-          {
-            role: "assistant",
+    if (!recognitionRef.current) {
 
-            content:
-              error.message ||
-              "I'm having trouble connecting to my backend.",
-
-            error: true,
-          },
-
-        ]
+      alert(
+        "Voice system is still initializing. Please try again."
       );
 
+      return;
 
-    } finally {
+    }
 
-      setLoading(false);
+
+    // ==========================================================
+    // ENABLE
+    // ==========================================================
+
+    shouldListenRef.current =
+      true;
+
+
+    voiceEnabledRef.current =
+      true;
+
+
+    voiceModeRef.current =
+      "speaking";
+
+
+    setVoiceEnabled(true);
+
+
+    // ==========================================================
+    // CONFIRM ACTIVATION
+    //
+    // Microphone stays OFF while saying this.
+    // ==========================================================
+
+    speakText(
+      "Voice mode activated.",
+      () => {
+
+        if (
+          shouldListenRef.current &&
+          voiceEnabledRef.current
+        ) {
+
+          voiceModeRef.current =
+            "wake";
+
+
+          setTimeout(() => {
+
+            startRecognition();
+
+          }, 600);
+
+        }
+
+      }
+    );
+
+  }
+
+
+  // ============================================================
+  // STOP VOICE MODE
+  // ============================================================
+
+  function stopVoiceMode() {
+
+    shouldListenRef.current =
+      false;
+
+
+    voiceEnabledRef.current =
+      false;
+
+
+    voiceModeRef.current =
+      "off";
+
+
+    setVoiceEnabled(false);
+
+    setListening(false);
+
+
+    if (
+      restartTimerRef.current
+    ) {
+
+      clearTimeout(
+        restartTimerRef.current
+      );
+
+    }
+
+
+    stopRecognition();
+
+
+    if (
+      window.speechSynthesis
+    ) {
+
+      window.speechSynthesis.cancel();
+
+    }
+
+
+    speakingRef.current =
+      false;
+
+  }
+
+
+  // ============================================================
+  // TOGGLE VOICE
+  // ============================================================
+
+  function toggleVoiceMode() {
+
+    if (voiceEnabled) {
+
+      stopVoiceMode();
+
+    } else {
+
+      startVoiceMode();
 
     }
 
@@ -343,7 +1456,7 @@ function App() {
 
 
   // ============================================================
-  // ENTER KEY
+  // KEYBOARD
   // ============================================================
 
   function handleKeyDown(event) {
@@ -363,7 +1476,7 @@ function App() {
 
 
   // ============================================================
-  // CLEAR CHAT
+  // CLEAR HISTORY
   // ============================================================
 
   async function clearChat() {
@@ -374,27 +1487,30 @@ function App() {
         await getAuthToken();
 
 
-      const response = await fetch(
-        `${API_URL}/history`,
-        {
-          method: "DELETE",
+      const response =
+        await fetch(
+          `${API_URL}/history`,
+          {
+            method: "DELETE",
 
-          headers: {
+            headers: {
 
-            "Authorization":
-              `Bearer ${token}`,
+              "Authorization":
+                `Bearer ${token}`,
 
-          },
+            },
 
-        }
-      );
+          }
+        );
 
 
       const data =
         await response.json();
 
 
-      if (response.status === 401) {
+      if (
+        response.status === 401
+      ) {
 
         throw new Error(
           "Authentication expired. Please login again."
@@ -403,19 +1519,21 @@ function App() {
       }
 
 
-      if (!response.ok || !data.success) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
 
         throw new Error(
           data.error ||
           data.detail ||
-          "Could not clear history"
+          "Could not clear history."
         );
 
       }
 
 
       setMessages([]);
-
 
     } catch (error) {
 
@@ -435,13 +1553,18 @@ function App() {
 
   async function handleLogout() {
 
+    stopVoiceMode();
+
+
     try {
 
       await signOut(auth);
 
+
       setMessages([]);
 
       setInput("");
+
 
     } catch (error) {
 
@@ -465,7 +1588,9 @@ function App() {
 
       <div className="auth-loading">
 
-        <h1>JARVIS</h1>
+        <h1>
+          JARVIS
+        </h1>
 
         <p>
           Initializing authentication...
@@ -482,7 +1607,10 @@ function App() {
   // LOGIN
   // ============================================================
 
-  if (!user && !showSignup) {
+  if (
+    !user &&
+    !showSignup
+  ) {
 
     return (
 
@@ -511,7 +1639,10 @@ function App() {
   // SIGNUP
   // ============================================================
 
-  if (!user && showSignup) {
+  if (
+    !user &&
+    showSignup
+  ) {
 
     return (
 
@@ -537,7 +1668,7 @@ function App() {
 
 
   // ============================================================
-  // JARVIS CHAT
+  // MAIN JARVIS
   // ============================================================
 
   return (
@@ -579,6 +1710,8 @@ function App() {
         <div className="header-right">
 
 
+          {/* ONLINE */}
+
           <div className="status">
 
             <span className="status-dot"></span>
@@ -588,6 +1721,30 @@ function App() {
           </div>
 
 
+          {/* VOICE */}
+
+          <button
+            className="voice-button"
+            onClick={toggleVoiceMode}
+            title={
+              voiceEnabled
+                ? "Disable voice mode"
+                : "Enable voice mode"
+            }
+          >
+
+            {listening
+              ? "🎙 LISTENING"
+              : voiceEnabled
+                ? "🔊 VOICE ON"
+                : "🎙 VOICE"
+            }
+
+          </button>
+
+
+          {/* EMAIL */}
+
           <span className="user-email">
 
             {user.email}
@@ -595,19 +1752,27 @@ function App() {
           </span>
 
 
+          {/* CLEAR */}
+
           <button
             className="clear-button"
             onClick={clearChat}
           >
+
             Clear
+
           </button>
 
+
+          {/* LOGOUT */}
 
           <button
             className="logout-button"
             onClick={handleLogout}
           >
+
             Logout
+
           </button>
 
 
@@ -617,7 +1782,7 @@ function App() {
 
 
       {/* ======================================================
-          CHAT
+          CHAT AREA
       ====================================================== */}
 
       <main className="chat-container">
@@ -655,7 +1820,9 @@ function App() {
                   )
                 }
               >
+
                 Explain AI
+
               </button>
 
 
@@ -666,7 +1833,9 @@ function App() {
                   )
                 }
               >
+
                 Plan my day
+
               </button>
 
 
@@ -677,11 +1846,14 @@ function App() {
                   )
                 }
               >
+
                 Teach me something
+
               </button>
 
 
             </div>
+
 
           </div>
 
@@ -705,7 +1877,9 @@ function App() {
                     "assistant" && (
 
                     <div className="message-avatar">
+
                       J
+
                     </div>
 
                   )}
@@ -733,8 +1907,8 @@ function App() {
 
 
             {/* =================================================
-                TYPING INDICATOR
-                ================================================= */}
+                LOADING
+            ================================================= */}
 
             {loading && (
 
@@ -742,14 +1916,18 @@ function App() {
 
 
                 <div className="message-avatar">
+
                   J
+
                 </div>
 
 
                 <div className="message-bubble typing">
 
                   <span></span>
+
                   <span></span>
+
                   <span></span>
 
                 </div>
@@ -768,6 +1946,7 @@ function App() {
           </div>
 
         )}
+
 
       </main>
 
@@ -794,7 +1973,11 @@ function App() {
 
             onKeyDown={handleKeyDown}
 
-            placeholder="Ask JARVIS anything..."
+            placeholder={
+              voiceEnabled
+                ? "Say 'Hi JARVIS'..."
+                : "Ask JARVIS anything..."
+            }
 
             rows="1"
 
@@ -807,7 +1990,9 @@ function App() {
 
             className="send-button"
 
-            onClick={sendMessage}
+            onClick={() =>
+              sendMessage()
+            }
 
             disabled={
               !input.trim() ||
@@ -815,7 +2000,9 @@ function App() {
             }
 
           >
+
             ↑
+
           </button>
 
 
@@ -824,7 +2011,15 @@ function App() {
 
         <p className="input-hint">
 
-          Press Enter to send • Shift + Enter for a new line
+          {voiceEnabled
+
+            ? listening
+              ? "Listening for 'Hi JARVIS'..."
+              : "Voice mode active"
+
+            : "Press Enter to send • Shift + Enter for a new line"
+
+          }
 
         </p>
 
